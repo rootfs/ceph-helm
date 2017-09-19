@@ -14,26 +14,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */}}
 
-{{- if .Values.manifests.deployment_moncheck }}
+{{- if .Values.manifests.deployment_mgr }}
 {{- $envAll := . }}
 {{- if .Values.deployment.ceph }}
-{{- $dependencies := .Values.dependencies.moncheck }}
+{{- if .Values.ceph.enabled.mgr }}
+{{- $dependencies := .Values.dependencies.mgr }}
 ---
 kind: Deployment
 apiVersion: apps/v1beta1
 metadata:
-  name: ceph-mon-check
+  name: ceph-mgr
 spec:
-  replicas: {{ .Values.pod.replicas.mon_check }}
+  replicas: {{ .Values.pod.replicas.mgr }}
   template:
     metadata:
       labels:
-{{ tuple $envAll "ceph" "moncheck" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 8 }}
+{{ tuple $envAll "ceph" "mgr" | include "helm-toolkit.snippets.kubernetes_metadata_labels" | indent 8 }}
     spec:
       affinity:
-{{ tuple $envAll "ceph" "moncheck" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
+{{ tuple $envAll "ceph" "mgr" | include "helm-toolkit.snippets.kubernetes_pod_anti_affinity" | indent 8 }}
       nodeSelector:
-        {{ .Values.labels.mon.node_selector_key }}: {{ .Values.labels.mon.node_selector_value }}
+        {{ .Values.labels.mgr.node_selector_key }}: {{ .Values.labels.mgr.node_selector_value }}
       serviceAccount: default
       initContainers:
 {{ tuple $envAll $dependencies "" | include "helm-toolkit.snippets.kubernetes_entrypoint_init_container" | indent 8 }}
@@ -54,39 +55,52 @@ spec:
             - name: pod-var-lib-ceph
               mountPath: /var/lib/ceph
               readOnly: false
+            - name: pod-run
+              mountPath: /run
+              readOnly: false
+            - name: pod-etc-ceph
+              mountPath: /etc/ceph
       containers:
-        - name: ceph-mon
+        - name: ceph-mgr
           image: {{ .Values.images.daemon }}
           imagePullPolicy: {{ .Values.images.pull_policy }}
-{{ tuple $envAll $envAll.Values.pod.resources.moncheck | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
+{{ tuple $envAll $envAll.Values.pod.resources.mgr | include "helm-toolkit.snippets.kubernetes_resources" | indent 10 }}
           env:
-            - name: K8S_HOST_NETWORK
-              value: "1"
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  apiVersion: v1
-                  fieldPath: metadata.namespace
+            - name: MGR_PORT
+              value: "{{ .Values.network.port.mgr }}"
           command:
-            - /watch_mon_health.sh
+            - /start_mgr.sh
           ports:
-            - containerPort: 6789
+            - containerPort: {{ .Values.network.port.mgr }}
+          livenessProbe:
+              httpGet:
+                path: /
+                port: {{ .Values.network.port.mgr }}
+              initialDelaySeconds: 120
+              timeoutSeconds: 5
+          readinessProbe:
+              httpGet:
+                path: /
+                port: {{ .Values.network.port.mgr }}
+              timeoutSeconds: 5
           volumeMounts:
-            - name: ceph-bin
-              mountPath: /watch_mon_health.sh
-              subPath: watch_mon_health.sh
+            - name: pod-etc-ceph
+              mountPath: /etc/ceph
+            - name: ceph-etc
+              mountPath: /etc/ceph/ceph.conf
+              subPath: ceph.conf
               readOnly: true
             - name: ceph-bin
-              mountPath: /check_zombie_mons.py
-              subPath: check_zombie_mons.py
+              mountPath: /start_mgr.sh
+              subPath: start_mgr.sh
+              readOnly: true
+            - name: ceph-bin
+              mountPath: /variables_entrypoint.sh
+              subPath: variables_entrypoint.sh
               readOnly: true
             - name: ceph-bin
               mountPath: /common_functions.sh
               subPath: common_functions.sh
-              readOnly: true
-            - name: ceph-etc
-              mountPath: /etc/ceph/ceph.conf
-              subPath: ceph.conf
               readOnly: true
             - name: ceph-client-admin-keyring
               mountPath: /etc/ceph/ceph.client.admin.keyring
@@ -104,8 +118,8 @@ spec:
               mountPath: /var/lib/ceph/bootstrap-mds/ceph.keyring
               subPath: ceph.keyring
               readOnly: false
-            - name: ceph-bootstrap-rgw-keyring
-              mountPath: /var/lib/ceph/bootstrap-rgw/ceph.keyring
+            - name: ceph-bootstrap-mgr-keyring
+              mountPath: /var/lib/ceph/bootstrap-mgr/ceph.keyring
               subPath: ceph.keyring
               readOnly: false
             - name: pod-var-lib-ceph
@@ -115,14 +129,16 @@ spec:
               mountPath: /run
               readOnly: false
       volumes:
-        - name: ceph-etc
-          configMap:
-            name: ceph-etc
-            defaultMode: 0444
+        - name: pod-etc-ceph
+          emptyDir: {}
         - name: ceph-bin
           configMap:
             name: ceph-bin
             defaultMode: 0555
+        - name: ceph-etc
+          configMap:
+            name: ceph-etc
+            defaultMode: 0444
         - name: pod-var-lib-ceph
           emptyDir: {}
         - name: pod-run
@@ -140,8 +156,9 @@ spec:
         - name: ceph-bootstrap-mds-keyring
           secret:
             secretName: {{ .Values.secrets.keyrings.mds }}
-        - name: ceph-bootstrap-rgw-keyring
+        - name: ceph-bootstrap-mgr-keyring
           secret:
-            secretName: {{ .Values.secrets.keyrings.rgw }}
+            secretName: {{ .Values.secrets.keyrings.mgr }}
+{{- end }}
 {{- end }}
 {{- end }}

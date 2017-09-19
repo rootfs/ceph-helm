@@ -24,8 +24,9 @@ limitations under the License.
 {{- $endpoint := index . 1 -}}
 {{- $port := index . 2 -}}
 {{- $context := index . 3 -}}
+{{- $typeYamlSafe := $type | replace "-" "_" }}
 {{- $clusterSuffix := printf "%s.%s" "svc" $context.Values.endpoints.cluster_domain_suffix }}
-{{- $endpointMap := index $context.Values.endpoints $type }}
+{{- $endpointMap := index $context.Values.endpoints $typeYamlSafe }}
 {{- with $endpointMap -}}
 {{- $namespace := $endpointMap.namespace | default $context.Release.Namespace }}
 {{- $endpointScheme :=  index .scheme $endpoint | default .scheme.default }}
@@ -34,7 +35,7 @@ limitations under the License.
 {{- $endpointPort := index $endpointPortMAP $endpoint | default (index $endpointPortMAP "default") }}
 {{- $endpointPath := index .path $endpoint | default .path.default | default "/" }}
 {{- $endpointClusterHostname := printf "%s.%s.%s" $endpointHost $namespace $clusterSuffix }}
-{{- $endpointHostname := index .host_fqdn_overide $endpoint | default .host_fqdn_overide.default | default $endpointClusterHostname }}
+{{- $endpointHostname := index .host_fqdn_override $endpoint | default .host_fqdn_override.default | default $endpointClusterHostname }}
 {{- printf "%s://%s:%1.f%s" $endpointScheme $endpointHostname $endpointPort $endpointPath -}}
 {{- end -}}
 {{- end -}}
